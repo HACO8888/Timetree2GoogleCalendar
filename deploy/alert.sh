@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # Called by systemd's OnFailure when a sync run exits non-zero.
 #
-# TimeTree's private API can change or start blocking at any time. A silent
-# failure looks exactly like "nothing to sync", so this always writes to the
-# journal, and additionally pushes to TT2GCAL_ALERT_URL when one is configured
-# (an ntfy.sh topic URL, or any endpoint that accepts a POST body).
+# TimeTree's private API can change or start blocking at any time, and a silent
+# failure looks exactly like "nothing to sync". So this always writes to the
+# journal, and additionally pushes to TT2GCAL_ALERT_URL when one is configured.
+#
+# Two wire formats are supported, chosen from the URL:
+#   - Discord webhooks want JSON {"content": ...} and cap at 2000 characters
+#   - anything else (ntfy.sh, custom endpoints) gets the plain text body
+#
+# TT2GCAL_ALERT_URL is a credential: anyone holding it can post to that channel.
+# It lives in .env, which is gitignored and mode 600.
 
 set -uo pipefail
 
@@ -24,7 +30,41 @@ if [[ -n "$lines" ]]; then
   printf '%s\n' "$lines"
 fi
 
-if [[ -n "${TT2GCAL_ALERT_URL:-}" ]]; then
+if [[ -z "${TT2GCAL_ALERT_URL:-}" ]]; then
+  log_info "set TT2GCAL_ALERT_URL in .env to also receive a push notification"
+  exit 0
+fi
+
+if [[ "$TT2GCAL_ALERT_URL" == *"discord.com/api/webhooks"* ]]; then
+  payload="$(
+    HOST="$host" LINES="$lines" python3 - <<'PY'
+import json, os
+
+host = os.environ["HOST"]
+lines = os.environ.get("LINES", "").strip()
+
+header = f":rotating_light: **tt2gcal sync failed** on `{host}`"
+if lines:
+    # Discord caps content at 2000 characters; keep the tail, which holds the error.
+    budget = 2000 - len(header) - len("\n```\n\n```") - 16
+    if len(lines) > budget:
+        lines = "...(truncated)\n" + lines[-budget:]
+    body = f"{header}\n```\n{lines}\n```"
+else:
+    body = f"{header}\n(no journal output available)"
+
+print(json.dumps({"content": body}))
+PY
+  )"
+  if curl --silent --show-error --fail --max-time 20 \
+       --header "Content-Type: application/json" \
+       --data "$payload" \
+       "$TT2GCAL_ALERT_URL" >/dev/null; then
+    log_info "alert pushed to Discord"
+  else
+    log_error "could not push the alert to Discord"
+  fi
+else
   body="tt2gcal sync failed on ${host}"$'\n\n'"${lines}"
   if curl --silent --show-error --fail --max-time 20 \
        --header "Title: tt2gcal sync failed" \
@@ -35,6 +75,4 @@ if [[ -n "${TT2GCAL_ALERT_URL:-}" ]]; then
   else
     log_error "could not push to TT2GCAL_ALERT_URL"
   fi
-else
-  log_info "set TT2GCAL_ALERT_URL in .env to also receive a push notification"
 fi
