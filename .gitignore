@@ -1,0 +1,28 @@
+# Secrets and runtime state — never commit
+.env
+.env.*
+!.env.example
+state/
+
+# Recon output contains real calendar names, event uuids and TimeTree user ids.
+# Match by prefix, not just the directory: `raw-timetree/` alone once let
+# raw-timetree-report.json through into the history.
+raw-timetree*
+recon-verdicts*
+*.ics
+
+# Memory is private. This repository is public, so it stays local.
+memory/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store

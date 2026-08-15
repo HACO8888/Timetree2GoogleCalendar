@@ -1,0 +1,38 @@
+[project]
+name = "tt2gcal"
+version = "0.1.0"
+description = "One-way mirror from TimeTree shared calendars into dedicated Google Calendars"
+requires-python = ">=3.11"
+dependencies = [
+    # Pinned exactly: we depend on this package's internal api.auth / api.calendar
+    # modules, not just its public CLI. See docs/timetree-api-notes.md.
+    "timetree-exporter==0.8.0",
+    "google-api-python-client>=2.198.0",
+    "google-auth-oauthlib>=1.4.0",
+]
+
+[project.scripts]
+tt2gcal = "tt2gcal.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.14",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tt2gcal"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,38 @@
+[Unit]
+Description=Mirror TimeTree calendars into Google Calendar
+Documentation=https://github.com/eoleedi/TimeTree-Exporter
+After=network-online.target
+Wants=network-online.target
+OnFailure=tt2gcal-alert.service
+
+[Service]
+Type=oneshot
+User=tt2gcal
+Group=tt2gcal
+WorkingDirectory=/opt/tt2gcal
+EnvironmentFile=/opt/tt2gcal/.env
+# Call the venv's console script directly rather than going through uv: uv wants
+# a writable cache at runtime, which the sandbox below deliberately denies. uv is
+# an install-time tool here, not a runtime one.
+ExecStart=/opt/tt2gcal/.venv/bin/tt2gcal sync
+TimeoutStartSec=600
+
+# The private TimeTree API can change without notice; a failed run must be loud,
+# not retried into a rate limit.
+Restart=no
+
+# Least privilege: the unit only needs its own state directory and the network.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/tt2gcal/state
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM

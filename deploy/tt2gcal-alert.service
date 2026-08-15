@@ -1,0 +1,10 @@
+[Unit]
+Description=Report a failed tt2gcal sync
+
+[Service]
+Type=oneshot
+User=tt2gcal
+Group=tt2gcal
+WorkingDirectory=/opt/tt2gcal
+EnvironmentFile=-/opt/tt2gcal/.env
+ExecStart=/opt/tt2gcal/deploy/alert.sh
