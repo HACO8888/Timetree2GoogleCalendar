@@ -100,16 +100,36 @@ journalctl -u tt2gcal.service -n 50
 
 ### 只能有一個寫入者
 
-排程一旦交給伺服器，**本機就只做唯讀操作**（`sync --dry-run`、`recon`、測試）。
-兩台機器同時寫同一批日曆會競爭：撞在一起可能對同一個事件插入兩次。
-（`index_synced_events` 偵測到重複的 `ttUid` 會刪掉多的那筆並記 warning，
+排程一旦交給伺服器，就不該再有第二台機器寫入同一批日曆：撞在一起可能對同一個事件
+插入兩次。（`index_synced_events` 偵測到重複的 `ttUid` 會刪掉多的那筆並記 warning，
 但那是補救，不是許可。）
 
-要把本機退成唯讀，刪掉本機的 token 即可：
+最直接的作法是刪掉開發機上的 Google token：
 
 ```bash
 rm state/google-token.json
 ```
+
+**這會一併擋掉 `doctor` 和 `sync --dry-run`** —— 兩者都要讀 Google 端才能比對。
+刪掉之後開發機上還能跑的是：
+
+| 指令 | 沒有 token 時 |
+| --- | --- |
+| `tt2gcal recon` | 可以（只碰 TimeTree） |
+| `pytest` | 可以（fixture 是離線的） |
+| `tt2gcal doctor` | 不行 |
+| `tt2gcal sync --dry-run` | 不行 |
+| `tt2gcal sync` | 不行（這正是重點） |
+
+要檢查同步狀況就在伺服器上跑：
+
+```bash
+ssh your-server 'cd /opt/tt2gcal && sudo -u tt2gcal ./.venv/bin/tt2gcal doctor'
+ssh your-server 'cd /opt/tt2gcal && sudo -u tt2gcal ./.venv/bin/tt2gcal sync --dry-run'
+```
+
+需要在開發機恢復完整權限時，重跑 `tt2gcal auth-google` 即可（約 30 秒），
+但記得用完再刪掉。
 
 ## 驗證
 
