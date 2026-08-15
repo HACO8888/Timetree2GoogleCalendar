@@ -11,6 +11,11 @@
 #
 # TT2GCAL_ALERT_URL is a credential: anyone holding it can post to that channel.
 # It lives in .env, which is gitignored and mode 600.
+#
+# TT2GCAL_ALERT_NAME and TT2GCAL_ALERT_AVATAR override the Discord webhook's
+# display name and icon per message, so alerts are recognisable in a busy
+# channel. Leave the avatar unset to keep whatever the webhook is configured
+# with in Discord's own settings.
 
 set -uo pipefail
 
@@ -37,7 +42,9 @@ fi
 
 if [[ "$TT2GCAL_ALERT_URL" == *"discord.com/api/webhooks"* ]]; then
   payload="$(
-    HOST="$host" LINES="$lines" python3 - <<'PY'
+    HOST="$host" LINES="$lines" \
+    NAME="${TT2GCAL_ALERT_NAME:-tt2gcal}" AVATAR="${TT2GCAL_ALERT_AVATAR:-}" \
+    python3 - <<'PY'
 import json, os
 
 host = os.environ["HOST"]
@@ -53,7 +60,11 @@ if lines:
 else:
     body = f"{header}\n(no journal output available)"
 
-print(json.dumps({"content": body}))
+payload = {"content": body, "username": os.environ.get("NAME") or "tt2gcal"}
+if os.environ.get("AVATAR"):
+    payload["avatar_url"] = os.environ["AVATAR"]
+
+print(json.dumps(payload))
 PY
   )"
   if curl --silent --show-error --fail --max-time 20 \
