@@ -43,14 +43,16 @@ fi
 if [[ "$TT2GCAL_ALERT_URL" == *"discord.com/api/webhooks"* ]]; then
   payload="$(
     HOST="$host" LINES="$lines" \
-    NAME="${TT2GCAL_ALERT_NAME:-tt2gcal}" AVATAR="${TT2GCAL_ALERT_AVATAR:-}" \
+    NAME="${TT2GCAL_ALERT_NAME:-TimeTree Sync}" AVATAR="${TT2GCAL_ALERT_AVATAR:-}" \
     python3 - <<'PY'
 import json, os
 
 host = os.environ["HOST"]
 lines = os.environ.get("LINES", "").strip()
 
-header = f":rotating_light: **tt2gcal sync failed** on `{host}`"
+# The webhook username already says which service this is, so the line itself
+# only has to say what broke and where.
+header = f":rotating_light: **Sync failed** on `{host}`"
 if lines:
     # Discord caps content at 2000 characters; keep the tail, which holds the error.
     budget = 2000 - len(header) - len("\n```\n\n```") - 16
@@ -60,7 +62,7 @@ if lines:
 else:
     body = f"{header}\n(no journal output available)"
 
-payload = {"content": body, "username": os.environ.get("NAME") or "tt2gcal"}
+payload = {"content": body, "username": os.environ.get("NAME") or "TimeTree Sync"}
 if os.environ.get("AVATAR"):
     payload["avatar_url"] = os.environ["AVATAR"]
 
