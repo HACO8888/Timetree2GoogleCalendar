@@ -2,10 +2,22 @@
 Description=Run the TimeTree to Google Calendar sync every 15 minutes
 
 [Timer]
-OnBootSec=2min
-OnUnitActiveSec=15min
+# Wall-clock schedule: fire at :00/:15/:30/:45 every hour.
+#
+# This deliberately replaces an earlier OnBootSec=2min + OnUnitActiveSec=15min
+# pair. That pair is purely monotonic and self-perpetuating: OnBootSec kicks off
+# the first run after boot, and each run's OnUnitActiveSec schedules the next.
+# It has no anchor of its own — if the boot kick is ever missed, the chain never
+# restarts and the timer sits dormant with no next elapse until the next reboot.
+# On a host that reboots weekly, a boot that brought the timer up later than
+# OnBootSec=2min (a slow network-online.target is enough) silently killed the
+# schedule for a whole week. OnCalendar always has a future elapse, so boot
+# timing can no longer strand it.
+OnCalendar=*:0/15
 
-# Catch up after downtime rather than waiting for the next slot.
+# Now actually meaningful: after a reboot that spanned a missed slot, fire once
+# to catch up instead of waiting for the next :00/:15/:30/:45. (Persistent is a
+# no-op without OnCalendar, which is why the old monotonic timer never caught up.)
 Persistent=true
 
 # Spread the load so every tt2gcal install does not hit TimeTree on the same second.
