@@ -173,7 +173,7 @@ class GoogleCalendarClient:
     # --- calendar lifecycle ---------------------------------------------
 
     def resolve_calendar(
-        self, tt_cal_id: str, tt_cal_name: str, *, create: bool = True
+        self, tt_cal_id: str, tt_cal_name: str, *, create: bool = True, prefix: str | None = None
     ) -> str | None:
         """Return the Google calendar id for a TimeTree calendar, creating it if needed.
 
@@ -183,13 +183,14 @@ class GoogleCalendarClient:
 
         With create=False nothing is written and None is returned when no calendar
         is known yet — a dry run must leave no trace, including no new calendars.
+        `prefix` overrides the configured name prefix for this one calendar.
         """
         mapping = self.store.get_calendar_map()
         existing = mapping.get(tt_cal_id)
         if existing and self._calendar_exists(existing):
             return existing
 
-        summary = f"{self.prefix}{tt_cal_name}"
+        summary = f"{self.prefix if prefix is None else prefix}{tt_cal_name}"
         if not create:
             return None
         recovered = self._find_calendar_by_summary(summary)

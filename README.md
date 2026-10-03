@@ -59,6 +59,7 @@ uv sync
 | `GOOGLE_CLIENT_SECRET` | 同上 |
 | `TT2GCAL_STATE_DIR` | 狀態目錄，預設 `./state` |
 | `TT2GCAL_CALENDAR_PREFIX` | Google 日曆名稱前綴，預設 `TimeTree · ` |
+| `TT2GCAL_PUBLIC_CALENDARS` | 額外同步的公開行事曆代碼（`timetr.ee/p/<代碼>`），逗號分隔；Google 那本不加前綴，方便直接分享給別人訂閱 |
 
 `.env` 與 `state/` 都在 `.gitignore` 內，部署時請 `chmod 600` / `700`。
 

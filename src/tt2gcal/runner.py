@@ -48,7 +48,11 @@ def run_sync(
     )
     result = RunResult()
 
-    for calendar in timetree.calendars():
+    # calendars() goes first: it is also the session probe that re-authenticates.
+    calendars = timetree.calendars()
+    calendars += timetree.public_calendars(config.public_calendars)
+
+    for calendar in calendars:
         if not calendar.is_active:
             logger.info("Skipping deactivated TimeTree calendar '%s'", calendar.name)
             continue
@@ -65,15 +69,18 @@ def run_sync(
         for reason, count in skipped.items():
             result.skipped[reason] = result.skipped.get(reason, 0) + count
 
+        # Public calendars are what students subscribe to, so their Google mirror
+        # carries the plain calendar name rather than the "TimeTree · " prefix.
+        prefix = "" if calendar.is_public else config.calendar_prefix
         google_calendar_id = google.resolve_calendar(
-            calendar.id, calendar.name, create=not dry_run
+            calendar.id, calendar.name, create=not dry_run, prefix=prefix
         )
         if google_calendar_id is None:
             # Dry run with no calendar yet: report what would happen without
             # creating anything. Everything is an insert against an empty calendar.
             logger.info(
                 "Would create Google calendar '%s%s' and insert %d events",
-                config.calendar_prefix, calendar.name, len(desired),
+                prefix, calendar.name, len(desired),
             )
             result.applied["insert"] = result.applied.get("insert", 0) + len(desired)
             result.plans.append(

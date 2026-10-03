@@ -64,6 +64,7 @@ class Config:
     include_birthdays: bool
     include_memos: bool
     label_in_description: bool
+    public_calendars: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls, *, require_timetree: bool = True, require_google: bool = True) -> Config:
@@ -98,4 +99,9 @@ class Config:
             include_birthdays=_flag("TT2GCAL_INCLUDE_BIRTHDAYS"),
             include_memos=_flag("TT2GCAL_INCLUDE_MEMOS"),
             label_in_description=_flag("TT2GCAL_LABEL_IN_DESCRIPTION"),
+            public_calendars=tuple(
+                alias.strip()
+                for alias in os.environ.get("TT2GCAL_PUBLIC_CALENDARS", "").split(",")
+                if alias.strip()
+            ),
         )

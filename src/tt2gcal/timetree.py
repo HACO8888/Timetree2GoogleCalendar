@@ -13,15 +13,27 @@ is rate limited (error code -495), and a 15-minute schedule would otherwise hamm
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 
 from requests.exceptions import HTTPError, RequestException
 from timetree_exporter.api.auth import AuthenticationError, login
 from timetree_exporter.api.calendar import TimeTreeCalendar
+from timetree_exporter.api.const import API_USER_AGENT
 
 from tt2gcal.state import Store
 
 logger = logging.getLogger(__name__)
+
+PUBLIC_API = "https://timetreeapp.com/api/v2/public_calendars"
+PUBLIC_PAGE_SIZE = 100
+# The public events endpoint only answers for an explicit [from, to) window. It
+# starts at the calendar's creation so old events never fall out of the window
+# and get deleted from Google; the end just has to outlive any real plan.
+PUBLIC_HORIZON_MS = 3 * 366 * 24 * 60 * 60 * 1000
+# Prefixed so a public calendar id can never collide with a shared calendar id in
+# state/calendars.json or in the ttCal event property.
+PUBLIC_ID_PREFIX = "public:"
 
 
 @dataclass(frozen=True)
@@ -31,6 +43,7 @@ class TimeTreeCalendarInfo:
     id: str
     name: str
     raw: dict
+    is_public: bool = False
 
     @property
     def alias_code(self) -> str | None:
@@ -51,8 +64,9 @@ class TimeTreeCalendarInfo:
         against a rate-limited private API.
         """
         result: dict[int, dict] = {}
-        for label in self.raw.get("calendar_labels") or []:
-            label_id = label.get("id")
+        raw_labels = self.raw.get("public_calendar_labels" if self.is_public else "calendar_labels")
+        for label in raw_labels or []:
+            label_id = label.get("label_id" if self.is_public else "id")
             if label_id is None:
                 continue
             color = label.get("color")
@@ -120,6 +134,22 @@ class TimeTreeClient:
             for cal in raw
         ]
 
+    def public_calendars(self, aliases: tuple[str, ...]) -> list[TimeTreeCalendarInfo]:
+        """Return the public calendars (公開行事曆) named by their alias codes.
+
+        Public calendars never appear in `/calendars`, so they are opt-in by alias.
+        A missing alias raises: silently skipping it would delete its whole Google
+        mirror on the next run.
+        """
+        result = []
+        for alias in aliases:
+            raw = self._get_json(f"{PUBLIC_API}/{alias}")["public_calendar"]
+            result.append(TimeTreeCalendarInfo(
+                id=f"{PUBLIC_ID_PREFIX}{raw['id']}", name=raw.get("name") or alias,
+                raw=raw, is_public=True,
+            ))
+        return result
+
     def events(self, calendar: TimeTreeCalendarInfo) -> list[dict]:
         """Return every event of one calendar as raw TimeTree dicts.
 
@@ -127,9 +157,62 @@ class TimeTreeClient:
         detected by absence against the Google-side index, which is immune to
         whatever tombstone/cursor semantics the private API happens to use.
         """
+        if calendar.is_public:
+            return self._public_events(calendar)
         return self._ensure_api().get_events(
             calendar.id,
             calendar.name,
             calendar.raw.get("calendar_users"),
             include_comments=False,
         )
+
+    def _public_events(self, calendar: TimeTreeCalendarInfo) -> list[dict]:
+        """Fetch every published event of a public calendar, in the shared-event shape."""
+        params = {
+            "from": calendar.raw.get("created_at") or 0,
+            "to": int(time.time() * 1000) + PUBLIC_HORIZON_MS,
+            "utc_offset": 0,
+            "limit": PUBLIC_PAGE_SIZE,
+        }
+        url = f"{PUBLIC_API}/{calendar.raw['alias_code']}/public_events"
+        events: list[dict] = []
+        while True:
+            page = self._get_json(url, params)
+            events += [public_event_to_event(e) for e in page.get("public_events") or []]
+            paging = page.get("paging") or {}
+            if not (paging.get("next") and paging.get("next_cursor")):
+                return events
+            params = {**params, "cursor": paging["next_cursor"]}
+
+    def _get_json(self, url: str, params: dict | None = None) -> dict:
+        response = self._ensure_api().session.get(
+            url, params=params, headers={"X-Timetreea": API_USER_AGENT}
+        )
+        response.raise_for_status()
+        return response.json()
+
+
+def public_event_to_event(event: dict) -> dict:
+    """Reshape a public calendar event into the shared-calendar event the mapper reads.
+
+    Only fields that exist on both sides are carried. `url` on a public event is
+    its own timetr.ee share link, not a user-entered URL, so `link_url` is used.
+    No `type`/`category`: public calendars have no birthdays or memos.
+    """
+    label = event.get("public_calendar_label") or {}
+    return {
+        "uuid": str(event["id"]),
+        "title": event.get("title"),
+        "all_day": event.get("all_day"),
+        "start_at": event.get("start_at"),
+        "end_at": event.get("end_at"),
+        "start_timezone": event.get("start_timezone"),
+        "end_timezone": event.get("end_timezone"),
+        "label_id": label.get("label_id"),
+        "note": event.get("note") or event.get("overview") or None,
+        "location": event.get("location_name") or None,
+        "url": event.get("link_url") or None,
+        "recurrences": event.get("recurrences") or [],
+        "parent_id": event.get("parent_id") or None,
+        "alerts": [],
+    }
